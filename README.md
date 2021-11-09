@@ -1,7 +1,7 @@
-cneuromod_qc
+ccna_qc_figures
 ==============================
 
-Analysis of QC measures of Courtois-Neuromod project
+QC summary metrics of [CCNA](https://ccna-ccnv.ca/)
 
 Project Organization
 ------------

@@ -1,5 +1,5 @@
-# local package
--e .
-
 # external requirements
-pybids
+matplotlib==3.3.4
+ptitprince==0.2.5
+pybids==0.14.0
+seaborn==0.11.2

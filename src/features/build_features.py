@@ -6,10 +6,9 @@ import bids
 import pandas as pd
 import numpy as np
 import nibabel as nib
-import nibabel.processing
-import nilearn
-import nilearn.input_data
+import nilearn as nil
 import nilearn.masking
+import nilearn.image
 ROOT_DIR = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(ROOT_DIR)
 import data.make_datasets
@@ -42,35 +41,90 @@ def dice_coefficient(source_img, target_img):
     return dice
 
 
-def compute_qc_metrics(metadata, scrub_threshold=0.5):
-    '''Compute mean framewise displacement, mask dice coefficient and mean/std images.'''
-    templateflow_list = list(set(metadata['template']))
-    metadata['fds_mean_raw'] = None
-    metadata['fds_mean_scrubbed'] = None
-    metadata['dice'] = None
-    # get templateflow
-    print("Fetching templateflow for {}".format(templateflow_list))
-    data.make_datasets.get_templateflow(templateflow_list)
+def resample_img(img_path, img, affine, shape, interpolation="continuous"):
+    '''resample nifti image and save'''
+    resampled_img = nil.image.resample_img(
+        img, target_affine=affine, target_shape=shape, interpolation=interpolation)
+    new_img_filename = os.path.basename(
+        img_path.replace(".nii", "_resampled.nii"))
+    image_path = os.path.join(ROOT_DIR, "..", "data",
+                              "interim", new_img_filename)
+    nib.save(resampled_img, image_path)
 
-    # fist compute group fMRI mask for fMRI dice
-    
-    # strategy to re-use existing fMRIprep masks
+    return image_path
+
+
+def fix_voxel_size(metadata):
+    '''fix voxel size for func/anat if it does not match the default'''
+    # TODO: get most frequent affine and shape from images
+    func_affine = np.array(([[3.5,  0.,  0.,  -96.5],
+                             [0., 3.5,  0., -132.5],
+                             [0.,  0., 3.5,  -78.5],
+                             [0.,  0.,  0.,    1.]]))
+    func_shape = (56, 67, 56)
+    anat_affine = np.array(([[1,  0.,  0.,  -96],
+                            [0., 1,  0., -132],
+                            [0.,  0., 1,  -78],
+                            [0.,  0.,  0.,  1]]))
+    anat_shape = (193, 229, 193)
+    for ii in range(len(metadata)):
+        metadata_row = metadata.iloc[ii]
+        img = nib.load(metadata_row['image'])
+        mask_img = nib.load(metadata_row['mask'])
+        # resampling
+        if (metadata_row['datatype'] == "anat") & (not np.isclose(anat_affine, img.affine, atol=1e-6).all()):
+            print("\tResampling {} image/mask for {} from affine:\n {} \n to \n {}".format(
+                metadata_row['datatype'], metadata_row['subject'], img.affine, anat_affine))
+            metadata.at[ii, 'mask'] = resample_img(
+                img_path=metadata_row['mask'], img=mask_img, affine=anat_affine, shape=anat_shape, interpolation="nearest")
+        elif (metadata_row['datatype'] == "func") & (not np.isclose(func_affine, img.affine, atol=1e-6).all()):
+            print("\tResampling {} image/mask for {} from affine:\n {} \n to \n {}".format(
+                metadata_row['datatype'], metadata_row['subject'], img.affine, func_affine))
+            # functionnal images are needed for group mask computation
+            metadata.at[ii, 'image'] = resample_img(
+                img_path=metadata_row['image'], img=img, affine=func_affine, shape=func_shape)
+            metadata.at[ii, 'mask'] = resample_img(
+                img_path=metadata_row['mask'], img=mask_img, affine=func_affine, shape=func_shape, interpolation="nearest")
+
+    return metadata
+
+
+def compute_group_fmri_mask(metadata):
+    '''Compute group fmri mask using func images'''
+    # mask computed from EPI images
+    images_paths = [metadata_row['image'] for _, metadata_row in metadata.iterrows(
+    ) if metadata_row['datatype'] == "func"]
+    group_fmri_mask = nil.masking.compute_multi_epi_mask(
+        images_paths, threshold=0.5, target_affine=None, target_shape=None)
+    # TODO: nilearn masker strategy
+    # fmri_mask_paths = [metadata_row['mask'] for _, metadata_row in metadata.iterrows(
+    #     ) if metadata_row['datatype'] == "func"]
+    # masker = nil.input_data.NiftiMasker(mask_strategy="background")
+    # group_fmri_mask = masker.fit(imgs=fmri_mask_paths).mask_img_
     # TODO: check also strategy intersection of masks
     # https://nilearn.github.io/modules/generated/nilearn.masking.intersect_masks.html#nilearn.masking.intersect_masks
-    # fmri_mask_paths = []
-    # for ii in range(len(metadata)):
-    #     if metadata.iloc[ii]['datatype'] == "func":
-    #         fmri_mask_paths += [metadata.iloc[ii]['mask']]
-    # masker = nilearn.input_data.NiftiMasker(mask_strategy="background", mask_args=)
-    # group_fmri_mask = masker.fit(imgs=fmri_mask_paths).mask_img_
-    #TODO: check with mask computed from EPI
-    images_paths = []
-    for ii in range(len(metadata)):
-        if metadata.iloc[ii]['datatype'] == "func":
-            images_paths += [metadata.iloc[ii]['image']]
-    group_fmri_mask = nilearn.masking.compute_multi_epi_mask(images_paths, threshold=0.5)
 
+    return group_fmri_mask
+
+
+def compute_qc_metrics(metadata, scrub_threshold=0.5, fix_affine=True):
+    '''Compute mean framewise displacement, mask dice coefficient and mean/std images.'''
+    templateflow_list = list(set(metadata['template']))
+    metadata['fds_mean_raw'] = np.nan
+    metadata['fds_mean_scrubbed'] = np.nan
+    metadata['dice'] = np.nan
+    # get templateflow
+    print("\tFetching templateflow for {}".format(templateflow_list))
+    data.make_datasets.get_templateflow(templateflow_list)
+    # # check if all affine match
+    if fix_affine:
+        print("\tChecking if affines are different and fixing (voxel size)...")
+        metadata = fix_voxel_size(metadata)
+    # fist compute group fMRI mask for fMRI dice
+    print("\tfMRI group mask...")
+    group_fmri_mask = compute_group_fmri_mask(metadata)
     # loop through all metadata
+    print("\tmean framewise displacement and dice...")
     for ii in range(len(metadata)):
         # compute fds score
         if metadata.iloc[ii]['datatype'] == "func":
@@ -82,23 +136,24 @@ def compute_qc_metrics(metadata, scrub_threshold=0.5):
             metadata.at[ii, 'fds_mean_scrubbed'] = fds_mean_scrubbed
         # compute dice
         # loading mask
-        mask_path = metadata.iloc[ii]['mask']
-        target_img = nib.load(mask_path)
+        source_mask = nib.load(metadata.iloc[ii]['mask'])
         # for anatomical data use template and for fMRI data use group mask
         if metadata.iloc[ii]['datatype'] == "anat":
             # loading template and resampling (assume isotropic pixel)
-            voxel_size = nib.load(mask_path).affine[0, 0]
-            res = "{:02d}".format(int(voxel_size))
-            if res != "01":
-                res = "02"
+            # voxel_size = source_mask.affine[0, 0]
+            # res = "{:02d}".format(int(voxel_size))
+            # if res != "01":
+            #     res = "02"
+            res = "01"
             template_name = metadata.iloc[ii]['template']
             template_path = f"{os.environ['HOME']}/.cache/templateflow/tpl-{template_name}/tpl-{template_name}_res-{res}_desc-brain_mask.nii.gz"
-            source_img = nib.processing.resample_to_output(nib.load(template_path), voxel_sizes=voxel_size)
-        else:
-            source_img = group_fmri_mask
+            target_mask = nib.load(template_path)
+        elif metadata.iloc[ii]['datatype'] == "func":
+            target_mask = group_fmri_mask
         # compute dice score
         # plotting.view_img(template_img, cut_coords=[0, 0, 0]).save_as_html('template.html')
-        dice = dice_coefficient(source_img.get_fdata(), target_img.get_fdata())
+        dice = dice_coefficient(source_mask.get_fdata(),
+                                target_mask.get_fdata())
         metadata.at[ii, 'dice'] = dice
 
     return metadata
@@ -126,6 +181,7 @@ def get_metadata(bids_dir):
             'datatype', 'session', 'subject', 'task'] if k in image.entities}
         entities.update({"image": image.path})
         qc_metadata = qc_metadata.append(pd.DataFrame(entities))
+    qc_metadata = qc_metadata.reset_index(drop=True)
     # update information with confounds and anat/func masks
     for confound in all_confounds:
         row_idx = np.logical_and(qc_metadata['datatype'] == confound.entities['datatype'],
@@ -135,47 +191,41 @@ def get_metadata(bids_dir):
         row_idx = np.logical_and(
             row_idx, qc_metadata['task'] == confound.entities['task'])
         qc_metadata.at[row_idx, ['confound']] = confound.path
-
     for mask in all_masks:
         row_idx = np.logical_and(qc_metadata['datatype'] == mask.entities['datatype'],
-                                 qc_metadata['session'] == mask.entities['session'])
-        row_idx = np.logical_and(
-            row_idx, qc_metadata['subject'] == mask.entities['subject'])
+                                 qc_metadata['subject'] == mask.entities['subject'])
+        if 'session' in mask.entities.keys():
+            row_idx = np.logical_and(
+                row_idx, qc_metadata['session'] == mask.entities['session'])
+        else:
+            row_idx = np.logical_and(row_idx, qc_metadata['session'].isna())
         if 'task' in mask.entities.keys():
             row_idx = np.logical_and(
                 row_idx, qc_metadata['task'] == mask.entities['task'])
+        else:
+            row_idx = np.logical_and(row_idx, qc_metadata['task'].isna())
         qc_metadata.at[row_idx, ['mask']] = mask.path
         qc_metadata.at[row_idx, ['template']] = mask.entities['space']
 
-    return qc_metadata.reset_index(drop=True)
-
-# TODO: to remove, was done for compatibility
+    return qc_metadata
 
 
-def get_confounds(bids_dir):
-    qc_confounds = []
+def auto_quality_control(metrics, anat_dice_pass_threshold=0.99, mean_fds_pass_threshold=0.3):
+    metrics['qc'] = np.nan
+    func_dice_pass_threshold = anat_dice_pass_threshold - 0.1
+    # automatic qc based from anat/func threshold and fds_mean
+    qc_failed = metrics['fds_mean_scrubbed'] > mean_fds_pass_threshold
+    qc_failed = qc_failed | (metrics['datatype'] == "anat") & (
+        metrics['dice'] < anat_dice_pass_threshold)
+    qc_failed = qc_failed | (metrics['datatype'] == "func") & (
+        metrics['dice'] < func_dice_pass_threshold)
+    metrics['qc'] = ["fail" if qc_state else "pass" for qc_state in qc_failed]
 
-    if os.path.exists(bids_dir):
-        layout = bids.BIDSLayout(bids_dir, validate=False)
-        layout.add_derivatives(bids_dir)
-        qc_confounds = pd.DataFrame(columns=['subject', 'session'])
-
-        all_confounds = layout.get(
-            scope="derivatives", desc="confounds", suffix="timeseries", extension="tsv")
-        for confound in all_confounds:
-            # all_fds = confound.get_df()['framewise_displacement'].to_numpy()
-            entities = {k: [confound.entities[k]] for k in [
-                'subject', 'session', 'task', 'run'] if k in confound.entities}
-            entities.update({"filepath": confound.path})
-            # ,"fds_mean": [np.nanmean(all_fds)]})
-            qc_confounds = qc_confounds.append(pd.DataFrame(entities))
-    else:
-        raise("Directory {} does not exists!".format(bids_dir))
-
-    return qc_confounds.reset_index(drop=True)
+    return metrics
 
 
 if __name__ == '__main__':
     input_dir = "/home/ltetrel/Documents/data/ccna_2019"
     metadata = get_metadata(input_dir)
-    metadata = compute_qc_metrics(metadata)
+    metrics = compute_qc_metrics(metadata)
+    metrics = auto_quality_control(metrics)

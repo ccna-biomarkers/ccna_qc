@@ -211,15 +211,30 @@ def get_metadata(bids_dir):
 
 
 def auto_quality_control(metrics, anat_dice_pass_threshold=0.99, mean_fds_pass_threshold=0.3):
-    metrics['qc'] = np.nan
+    metrics['qc'] = ""
+    metrics['reason'] = ""
     func_dice_pass_threshold = anat_dice_pass_threshold - 0.1
     # automatic qc based from anat/func threshold and fds_mean
-    qc_failed = metrics['fds_mean_scrubbed'] > mean_fds_pass_threshold
-    qc_failed = qc_failed | (metrics['datatype'] == "anat") & (
-        metrics['dice'] < anat_dice_pass_threshold)
-    qc_failed = qc_failed | (metrics['datatype'] == "func") & (
-        metrics['dice'] < func_dice_pass_threshold)
-    metrics['qc'] = ["fail" if qc_state else "pass" for qc_state in qc_failed]
+    # qc_failed = metrics['fds_mean_scrubbed'] > mean_fds_pass_threshold
+    # qc_failed = qc_failed | (metrics['datatype'] == "anat") & (
+    #     metrics['dice'] < anat_dice_pass_threshold)
+    # qc_failed = qc_failed | (metrics['datatype'] == "func") & (
+    #     metrics['dice'] < func_dice_pass_threshold)
+    # metrics['qc'] = ["fail" if qc_state else "pass" for qc_state in qc_failed]
+    for ii in range(len(metrics)):
+        dice = metrics.at[ii, 'dice']
+        metrics.at[ii, 'qc'] = "pass"
+        if (metrics.at[ii, 'datatype'] == "anat") & (dice < anat_dice_pass_threshold):
+            metrics.at[ii, 'qc'] = "fail"
+            metrics.at[ii, 'reason'] = "anat dice {} < {}".format(dice, anat_dice_pass_threshold)
+        if (metrics.at[ii, 'datatype'] == "func"):
+            fds_mean_scrubbed = metrics.at[ii, 'fds_mean_scrubbed']
+            if fds_mean_scrubbed > mean_fds_pass_threshold:
+                metrics.at[ii, 'qc'] = "fail"
+                metrics.at[ii, 'reason'] = "fds_mean_scrubbed {}mm > {}mm; ".format(fds_mean_scrubbed, mean_fds_pass_threshold)
+            if (dice < func_dice_pass_threshold):
+                metrics.at[ii, 'qc'] = "fail"
+                metrics.at[ii, 'reason'] = metrics.at[ii, 'reason'] + "func dice {} < {}; ".format(dice, func_dice_pass_threshold)
 
     return metrics
 

@@ -88,3 +88,4 @@ if __name__ == '__main__':
     print(f"\tDescriptive statistics to {output_stats_filepath}")
     descriptive_stats = features.build_features.descriptive_statistics(metrics)
     descriptive_stats.to_csv(output_stats_filepath)
+    print(descriptive_stats)

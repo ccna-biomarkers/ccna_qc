@@ -247,20 +247,18 @@ def descriptive_statistics(metrics):
     '''Compute the statistics for dice and fds.'''
     descriptive_stats = pd.DataFrame(
         columns=['name', 'n_samples', 'mean', 'std', 'q_0.01', 'q_0.05', 'q_0.95', 'q_0.99'])
-    anat_idx = metrics['datatype'] == "anat"
-    func_idx = metrics['datatype'] == "func"
     metric_names = ["anat_dice", "func_dice",
                     "fds_mean_raw", "fds_mean_scrubbed"]
-    datatypes = ["anat", 'func']
 
     for metric_name in metric_names:
+        split_metric_name = metric_name
         if "dice" in metric_name:
             datatype = metric_name.split("_")[0]
-            metric_name = metric_name.split("_")[1]
+            split_metric_name = metric_name.split("_")[1]
         else:
             datatype = "func"
         samples = metrics[metrics['datatype']
-                          == datatype][metric_name].to_numpy()
+                          == datatype][split_metric_name].to_numpy()
         desc = {'name': metric_name,
                 'n_samples': [len(samples)],
                 'mean': [np.mean(samples)],

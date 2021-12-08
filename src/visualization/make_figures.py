@@ -58,6 +58,7 @@ def violin_plot(metrics, group="task", metric_to_plot="fds_mean", figure_title="
 if __name__ == '__main__':
     output_filepath = os.path.join(
         ROOT_DIR, "..", "data/processed/qc_metrics.csv")
+    output_stats_filepath = output_filepath.replace("qc_metrics", "qc_stats")
     args = get_parser().parse_args()
     if args.output_dir is None:
         args.output_dir = os.path.join(ROOT_DIR, "..", "reports/figures")
@@ -66,7 +67,7 @@ if __name__ == '__main__':
     if args.input_file is not None:
         if os.path.exists(args.input_file):
             print("\tReading metrics from {}".format(args.input_file))
-            metrics = pd.read_pickle(args.input_file)
+            metrics = pd.read_csv(args.input_file)
         else:
             raise ValueError("{} does not exist!".format(args.input_file))
     else:
@@ -77,10 +78,13 @@ if __name__ == '__main__':
         print("\tAutomatic QC and saving to {}".format(output_filepath))
         metrics = features.build_features.auto_quality_control(metadata)
         metrics.to_csv(output_filepath)
-    print("\tPlotting metrics...")
+    print(f"\tPlotting metrics to {args.output_dir}")
     violin_plot(metrics, group="task", metric_to_plot="fds_mean_raw", figure_title="CCNA QC analytics - Framewise displacement",
                 output_dir=args.output_dir, figure_filename="raw_fds_mean.png")
     violin_plot(metrics, group="task", metric_to_plot="fds_mean_scrubbed", figure_title="CCNA QC analytics - Framewise displacement",
                 output_dir=args.output_dir, figure_filename="scrubbed_fds_mean.png")
     violin_plot(metrics, group="datatype", metric_to_plot="dice", figure_title="CCNA QC analytics - Dice coefficient",
                 output_dir=args.output_dir, figure_filename="dice.png")
+    print(f"\tDescriptive statistics to {output_stats_filepath}")
+    descriptive_stats = features.build_features.descriptive_statistics(metrics)
+    descriptive_stats.to_csv(output_stats_filepath)

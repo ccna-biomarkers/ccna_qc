@@ -226,17 +226,52 @@ def auto_quality_control(metrics, anat_dice_pass_threshold=0.99, mean_fds_pass_t
         metrics.at[ii, 'qc'] = "pass"
         if (metrics.at[ii, 'datatype'] == "anat") & (dice < anat_dice_pass_threshold):
             metrics.at[ii, 'qc'] = "fail"
-            metrics.at[ii, 'reason'] = "anat dice {} < {}".format(dice, anat_dice_pass_threshold)
+            metrics.at[ii, 'reason'] = "anat dice {} < {}".format(
+                dice, anat_dice_pass_threshold)
         if (metrics.at[ii, 'datatype'] == "func"):
             fds_mean_scrubbed = metrics.at[ii, 'fds_mean_scrubbed']
             if fds_mean_scrubbed > mean_fds_pass_threshold:
                 metrics.at[ii, 'qc'] = "fail"
-                metrics.at[ii, 'reason'] = "fds_mean_scrubbed {}mm > {}mm; ".format(fds_mean_scrubbed, mean_fds_pass_threshold)
+                metrics.at[ii, 'reason'] = "fds_mean_scrubbed {}mm > {}mm; ".format(
+                    fds_mean_scrubbed, mean_fds_pass_threshold)
             if (dice < func_dice_pass_threshold):
                 metrics.at[ii, 'qc'] = "fail"
-                metrics.at[ii, 'reason'] = metrics.at[ii, 'reason'] + "func dice {} < {}; ".format(dice, func_dice_pass_threshold)
+                metrics.at[ii, 'reason'] = metrics.at[ii, 'reason'] + \
+                    "func dice {} < {}; ".format(
+                        dice, func_dice_pass_threshold)
 
     return metrics
+
+
+def descriptive_statistics(metrics):
+    '''Compute the statistics for dice and fds.'''
+    descriptive_stats = pd.DataFrame(
+        columns=['name', 'n_samples', 'mean', 'std', 'q_0.01', 'q_0.05', 'q_0.95', 'q_0.99'])
+    anat_idx = metrics['datatype'] == "anat"
+    func_idx = metrics['datatype'] == "func"
+    metric_names = ["anat_dice", "func_dice",
+                    "fds_mean_raw", "fds_mean_scrubbed"]
+    datatypes = ["anat", 'func']
+
+    for metric_name in metric_names:
+        if "dice" in metric_name:
+            datatype = metric_name.split("_")[0]
+            metric_name = metric_name.split("_")[1]
+        else:
+            datatype = "func"
+        samples = metrics[metrics['datatype']
+                          == datatype][metric_name].to_numpy()
+        desc = {'name': metric_name,
+                'n_samples': [len(samples)],
+                'mean': [np.mean(samples)],
+                'std': [np.std(samples)],
+                'q_0.01': [np.quantile(samples, q=0.01)],
+                'q_0.05': [np.quantile(samples, q=0.05)],
+                'q_0.95': [np.quantile(samples, q=0.95)],
+                'q_0.99': [np.quantile(samples, q=0.99)]}
+        descriptive_stats = descriptive_stats.append(pd.DataFrame(desc))
+
+    return descriptive_stats
 
 
 if __name__ == '__main__':
@@ -244,3 +279,4 @@ if __name__ == '__main__':
     metadata = get_metadata(input_dir)
     metrics = compute_qc_metrics(metadata)
     metrics = auto_quality_control(metrics)
+    descriptive_stats = descriptive_statistics(metrics)

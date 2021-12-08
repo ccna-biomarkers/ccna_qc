@@ -58,7 +58,8 @@ def violin_plot(metrics, group="task", metric_to_plot="fds_mean", figure_title="
 if __name__ == '__main__':
     output_filepath = os.path.join(
         ROOT_DIR, "..", "data/processed/qc_metrics.csv")
-    output_stats_filepath = output_filepath.replace("qc_metrics", "qc_stats")
+    output_stats_filepath = os.path.join(
+        ROOT_DIR, "..", "reports/qc_metrics.csv")
     args = get_parser().parse_args()
     if args.output_dir is None:
         args.output_dir = os.path.join(ROOT_DIR, "..", "reports/figures")

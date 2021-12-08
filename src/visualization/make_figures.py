@@ -59,7 +59,7 @@ if __name__ == '__main__':
     output_filepath = os.path.join(
         ROOT_DIR, "..", "data/processed/qc_metrics.csv")
     output_stats_filepath = os.path.join(
-        ROOT_DIR, "..", "reports/qc_metrics.csv")
+        ROOT_DIR, "..", "reports/qc_stats.csv")
     args = get_parser().parse_args()
     if args.output_dir is None:
         args.output_dir = os.path.join(ROOT_DIR, "..", "reports/figures")

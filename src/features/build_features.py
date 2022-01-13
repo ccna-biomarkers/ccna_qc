@@ -13,23 +13,6 @@ ROOT_DIR = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(ROOT_DIR)
 import data.make_datasets
 
-# import numpy as np
-
-# k=1
-
-# # segmentation
-# seg = np.zeros((100,100), dtype='int')
-# seg[30:70, 30:70] = k
-
-# # ground truth
-# gt = np.zeros((100,100), dtype='int')
-# gt[30:70, 40:80] = k
-
-# dice = np.sum(seg[gt==k])*2.0 / (np.sum(seg) + np.sum(gt))
-
-# print 'Dice similarity score is {}'.format(dice)
-
-
 def dice_coefficient(source_img, target_img):
     '''Compute the Sørensen-dice coefficient between two n-d volumes'''
     source_img = source_img.astype(bool)

@@ -256,7 +256,7 @@ def descriptive_statistics(metrics):
 
 
 if __name__ == '__main__':
-    input_dir = "/home/ltetrel/Documents/data/ccna_2019"
+    input_dir = "~/Documents/data/ccna_2019"
     metadata = get_metadata(input_dir)
     metrics = compute_qc_metrics(metadata)
     metrics = auto_quality_control(metrics)

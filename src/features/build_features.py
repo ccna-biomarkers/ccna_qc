@@ -194,6 +194,7 @@ def get_metadata(bids_dir):
 
 
 def auto_quality_control(metrics, anat_dice_pass_threshold=0.99, mean_fds_pass_threshold=0.3):
+    '''do the qc based on dice and fds scores'''
     metrics['qc'] = ""
     metrics['reason'] = ""
     func_dice_pass_threshold = anat_dice_pass_threshold - 0.1

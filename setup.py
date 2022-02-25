@@ -5,6 +5,6 @@ setup(
     packages=find_packages(),
     version='0.1.0',
     description='Analysis of QC measures of Courtois-Neuromod project',
-    author='courtois-neuromod',
+    author=' ccna-biomarkers ',
     license='MIT',
 )
